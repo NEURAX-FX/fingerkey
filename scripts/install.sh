@@ -18,7 +18,18 @@ cd "${REPO_ROOT}"
 
 DAEMON_BIN="/usr/local/libexec/fingerkeyd"
 PAIR_BIN="/usr/local/bin/fingerkey"
-PAM_MODULE="/usr/lib/x86_64-linux-gnu/security/pam_fingerkey.so"
+PAM_LIBDIR=""
+for dir in /usr/lib64/security /usr/lib/x86_64-linux-gnu/security /usr/lib/security; do
+    if [[ -d "${dir}" ]]; then
+        PAM_LIBDIR="${dir}"
+        break
+    fi
+done
+if [[ -z "${PAM_LIBDIR}" ]]; then
+    echo "error: no PAM module directory found" >&2
+    exit 1
+fi
+PAM_MODULE="${PAM_LIBDIR}/pam_fingerkey.so"
 UNIT_SRC="etc/systemd/fingerkeyd.service"
 UNIT_DST="/etc/systemd/system/fingerkeyd.service"
 KEYS_PARENT="/var/lib/phone-fprint-auth"
@@ -29,12 +40,17 @@ PAM_LINE="auth sufficient pam_fingerkey.so"
 SUDOERS_DROPIN="/etc/sudoers.d/phone-fprint-auth"
 SUDOERS_LINE='Defaults env_keep += "FINGERKEY_REASON"'
 
-# wire_pam_file inserts the approval module line into a PAM service file
-# as the FIRST auth line, above @include common-auth. Idempotent.
+# wire_pam_file inserts the approval module before the FIRST auth rule.
+# A failed remote approval therefore falls through to the existing local
+# password stack on both Debian-style and Fedora-style PAM files.
 wire_pam_file() {
     local file="$1"
     local backup
 
+    if [[ ! -e "${file}" ]]; then
+        echo "pam: ${file} not present — skipping"
+        return 0
+    fi
     if grep -q 'pam_fingerkey.so' "${file}"; then
         echo "pam: '${PAM_LINE}' already present in ${file} — skipping"
         return 0
@@ -44,8 +60,11 @@ wire_pam_file() {
         cp -p "${file}" "${backup}"
         echo "pam: backed up ${file} -> ${backup}"
     fi
-    # Insert as the FIRST auth line, above @include common-auth.
-    sed -i "/^@include[[:space:]]\\+common-auth\$/i ${PAM_LINE}" "${file}"
+    if ! grep -Eq '^[[:space:]]*auth[[:space:]]' "${file}"; then
+        echo "error: no auth rule found in ${file}" >&2
+        exit 1
+    fi
+    sed -i '0,/^[[:space:]]*auth[[:space:]]/s//auth sufficient pam_fingerkey.so\n&/' "${file}"
     if ! grep -q 'pam_fingerkey.so' "${file}"; then
         echo "error: failed to insert '${PAM_LINE}' into ${file}" >&2
         exit 1

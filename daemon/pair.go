@@ -56,8 +56,8 @@ func newPairManager(keysDir string) *pairManager {
 	return &pairManager{tokens: make(map[string]pairingEntry), keysDir: keysDir}
 }
 
-// setTransport records the TLS fingerprint and the numeric-IP host:port the
-// pair response advertises. Called once the TLS listener is bound.
+// setTransport records the TLS fingerprint and the advertised host:port the
+// pair response uses. Called once the TLS listener is bound.
 func (pm *pairManager) setTransport(fp, host string, port int) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -151,7 +151,7 @@ func (pm *pairManager) consume(token string, pub ed25519.PublicKey) (name string
 
 // handlePair serves POST /v1/pair on the root-only unix socket: it mints a
 // token for the requested phone name and answers with the token plus the TLS
-// fingerprint and the numeric-IP host:port the phone must connect to.
+// fingerprint and advertised host:port the phone must dial.
 func (pm *pairManager) handlePair(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.NotFound(w, r)
@@ -205,4 +205,38 @@ func localIPv4() string {
 		}
 	}
 	return "127.0.0.1"
+}
+
+// validateAdvertiseConfig validates the endpoint embedded in pairing QR data.
+// A hostname is allowed for public DNS; a raw IPv6 address is allowed too.
+// URI delimiters are rejected so a bad service configuration cannot corrupt
+// the phonefprint:// payload.
+func validateAdvertiseConfig(host string, port int) error {
+	if port < 0 || port > 65535 {
+		return errors.New("advertise-port must be between 0 and 65535")
+	}
+	if host == "" {
+		return nil
+	}
+	if strings.TrimSpace(host) != host || strings.ContainsAny(host, "/?#@[]") {
+		return errors.New("advertise-host must be a hostname or raw IP address")
+	}
+	if net.ParseIP(host) != nil {
+		return nil
+	}
+	if strings.Contains(host, ":") {
+		return errors.New("advertise-host must not include a port")
+	}
+	for _, label := range strings.Split(host, ".") {
+		if label == "" || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return errors.New("advertise-host is not a valid hostname")
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') &&
+				(r < '0' || r > '9') && r != '-' {
+				return errors.New("advertise-host is not a valid hostname")
+			}
+		}
+	}
+	return nil
 }

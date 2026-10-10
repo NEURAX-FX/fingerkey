@@ -22,9 +22,14 @@ func main() {
 	simSocketPath := flag.String("phone-sim-socket", "", "unix socket path for a test phone link (empty = disabled)")
 	addr := flag.String("addr", ":4443", "TCP address for the TLS phone listener")
 	tlsDir := flag.String("tls-dir", "/var/lib/phone-fprint-auth/tls", "directory holding the TLS identity (cert.pem/key.pem)")
+	advertiseHost := flag.String("advertise-host", "", "host or IP encoded in manual pairing fields (empty = detected LAN IPv4)")
+	advertisePort := flag.Int("advertise-port", 0, "external TCP port encoded in manual pairing fields (0 = TLS listener port)")
 	maxConns := flag.Int("max-conns", 16, "maximum concurrent TLS phone connections")
 	maxConnsPerIP := flag.Int("max-conns-per-ip", 4, "maximum concurrent TLS phone connections per source IP")
 	flag.Parse()
+	if err := validateAdvertiseConfig(*advertiseHost, *advertisePort); err != nil {
+		log.Fatalf("invalid advertised endpoint: %v", err)
+	}
 
 	keys := newKeyProvider(*keysDir)
 	store := NewStore()
@@ -74,8 +79,16 @@ func main() {
 			log.Printf("tls unavailable: %v", err)
 		} else {
 			port := ln.Addr().(*net.TCPAddr).Port
-			pairs.setTransport(fp, localIPv4(), port)
-			log.Printf("fingerkeyd: tls listening on %s (fp=%s)", ln.Addr(), fp)
+			advertisedHost := *advertiseHost
+			if advertisedHost == "" {
+				advertisedHost = localIPv4()
+			}
+			advertisedPort := *advertisePort
+			if advertisedPort == 0 {
+				advertisedPort = port
+			}
+			pairs.setTransport(fp, advertisedHost, advertisedPort)
+			log.Printf("fingerkeyd: tls listening on %s (pairing endpoint=%s:%d, fp=%s)", ln.Addr(), advertisedHost, advertisedPort, fp)
 			if err := publishMDNS(port, fp); err != nil {
 				log.Printf("mdns unavailable: %v", err)
 			}

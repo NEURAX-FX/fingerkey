@@ -1,7 +1,7 @@
 /// Device identity (Ed25519 keypair in Keystore-backed secure storage) plus
 /// the roster of paired daemon computers. The roster replaces the old single
 /// `bt_address`: each entry is `{name, fingerprint, lastAddr}` where `name`
-/// is the computer's display name (from the QR `n=` or the mDNS instance),
+/// is the computer's display name from manual pairing or mDNS,
 /// `fingerprint` is the pinned lowercase-hex SHA-256 of its TLS leaf cert,
 /// and `lastAddr` is the last known `host:port`.
 library;

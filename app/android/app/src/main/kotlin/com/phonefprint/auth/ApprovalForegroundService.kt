@@ -157,9 +157,8 @@ class ApprovalForegroundService : Service() {
             )
             // Register only what the background isolate uses, BEFORE the Dart
             // entrypoint runs, so a cold-start EventChannel subscribe cannot
-            // hit a not-yet-attached handler and be lost. Deliberately NOT
-            // GeneratedPluginRegistrant: local_auth/mobile_scanner are
-            // Activity-bound and never run headless (no biometric here).
+            // GeneratedPluginRegistrant is intentionally not used here:
+            // Activity-bound plugins never run in the headless service.
             engine.plugins.add(FlutterSecureStoragePlugin())
             engine.plugins.add(EngineHolder.serviceChannel(this))
             engine.plugins.add(EngineHolder.notifier(this))

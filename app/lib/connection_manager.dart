@@ -21,13 +21,14 @@ class ConnectionManager {
     required this.identity,
     DaemonClient Function(RosterComputer computer)? clientFactory,
     Future<List<TcpComputer>> Function()? browse,
-  })  : _clientFactory = clientFactory ??
-            ((computer) => DaemonClient(
-                  pubkey: identity.publicKeyBase64,
-                  source: computer.fingerprint,
-                  sourceName: computer.name,
-                )),
-        _browse = browse ?? TcpTlsLink.browse;
+  }) : _clientFactory =
+           clientFactory ??
+           ((computer) => DaemonClient(
+             pubkey: identity.publicKeyBase64,
+             source: computer.fingerprint,
+             sourceName: computer.name,
+           )),
+       _browse = browse ?? TcpTlsLink.browse;
 
   static const Duration _initialBackoff = Duration(seconds: 1);
   static const Duration _maxBackoff = Duration(seconds: 30);
@@ -107,8 +108,7 @@ class ConnectionManager {
       if (welcome == null) {
         try {
           for (final c in await _browse()) {
-            if (c.fp.toLowerCase() ==
-                link.computer.fingerprint.toLowerCase()) {
+            if (c.fp.toLowerCase() == link.computer.fingerprint.toLowerCase()) {
               discovered = c;
               break;
             }
@@ -137,8 +137,7 @@ class ConnectionManager {
       }
 
       // Refresh lastAddr when mDNS moved the computer.
-      if (discovered != null &&
-          discovered.lastAddr != link.computer.lastAddr) {
+      if (discovered != null && discovered.lastAddr != link.computer.lastAddr) {
         link.computer = RosterComputer(
           name: link.computer.name,
           fingerprint: link.computer.fingerprint,
@@ -226,7 +225,11 @@ class ConnectionManager {
   static (String, int)? _parseLastAddr(String addr) {
     final i = addr.lastIndexOf(':');
     if (i <= 0 || i == addr.length - 1) return null;
-    final host = addr.substring(0, i);
+    var host = addr.substring(0, i);
+    if (host.startsWith('[')) {
+      if (!host.endsWith(']')) return null;
+      host = host.substring(1, host.length - 1);
+    }
     final port = int.tryParse(addr.substring(i + 1));
     if (host.isEmpty || port == null) return null;
     return (host, port);

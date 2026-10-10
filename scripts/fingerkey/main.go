@@ -1,20 +1,15 @@
-// Command fingerkey manages the paired phone public keys that the
-// phone-fprint-auth daemon verifies decisions against. Each paired key is a
-// file /var/lib/phone-fprint-auth/keys/<name>.pub containing the standard,
-// padded base64 encoding of a 32-byte Ed25519 public key, mode 0644, owned by
-// the phonefprint user (so any user can list it and nobody else can write
-// it).
+// Command fingerkey manages paired phone public keys verified by the daemon.
 //
 // Usage:
 //
-//	fingerkey pair <name> <pubkey_b64>
-//	fingerkey list
-//	fingerkey remove <name>
-//	fingerkey pair-qr <name>
+//	pair <name> <pubkey_b64>
+//	pair-code <name>
+//	list
+//	remove <name>
 //
-// pair and remove require root (the keys directory is root/phonefprint-owned);
-// list does not. pair-qr talks to the daemon over its root-only unix socket,
-// so it needs root unless the socket is reachable another way.
+// pair and remove require root; pair-code requires root to mint a one-time
+// token from the root-only daemon socket; list does not.
+
 package main
 
 import (
@@ -62,12 +57,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		err = remove(args[1])
-	case "pair-qr":
+	case "pair-code":
 		if len(args) != 2 {
 			usage(stderr)
 			return 1
 		}
-		err = pairQR(args[1], stdout)
+		err = pairCode(args[1], stdout)
 	default:
 		usage(stderr)
 		return 1
@@ -84,7 +79,7 @@ func usage(w io.Writer) {
   pair <name> <pubkey_b64>   pair a phone: store its Ed25519 public key
   list                       list paired key names
   remove <name>              unpair a phone
-  pair-qr <name>             print a scannable QR code pairing a phone as <name>`)
+  pair-code <name>           print copy/paste pairing fields`)
 }
 
 // pair validates the public key and stores it under keysDir as <name>.pub,

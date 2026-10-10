@@ -24,16 +24,16 @@ class TcpComputer {
   });
 
   factory TcpComputer.fromMap(Map<dynamic, dynamic> map) => TcpComputer(
-        name: map['name'] as String? ?? '',
-        host: map['host'] as String? ?? '',
-        port: map['port'] as int? ?? 0,
-        fp: map['fp'] as String? ?? '',
-      );
+    name: map['name'] as String? ?? '',
+    host: map['host'] as String? ?? '',
+    port: map['port'] as int? ?? 0,
+    fp: map['fp'] as String? ?? '',
+  );
 
   /// Display name: the mDNS instance name (the machine hostname).
   final String name;
 
-  /// Numeric IPv4 host to dial.
+  /// Hostname or numeric IP address to dial.
   final String host;
 
   /// TLS listener port.
@@ -43,7 +43,12 @@ class TcpComputer {
   final String fp;
 
   /// `host:port` for persisting as a roster `lastAddr`.
-  String get lastAddr => '$host:$port';
+  String get lastAddr {
+    final address = host.contains(':') && !host.startsWith('[')
+        ? '[$host]'
+        : host;
+    return '$address:$port';
+  }
 }
 
 /// One event from the native link, tagged with the connection id it belongs
@@ -73,8 +78,8 @@ class TcpEvent {
 /// id [connect] returns.
 class TcpTlsLink {
   TcpTlsLink({MethodChannel? channel, EventChannel? events})
-      : _channel = channel ?? const MethodChannel(channelName),
-        _eventsChannel = events ?? const EventChannel(eventsChannelName);
+    : _channel = channel ?? const MethodChannel(channelName),
+      _eventsChannel = events ?? const EventChannel(eventsChannelName);
 
   static const String channelName = 'com.phonefprint.auth/tcp';
   static const String eventsChannelName = 'com.phonefprint.auth/tcp_events';
@@ -91,8 +96,7 @@ class TcpTlsLink {
 
   Stream<TcpEvent> get _sharedEvents => _events ??= _eventsChannel
       .receiveBroadcastStream()
-      .map((dynamic event) =>
-          TcpEvent.fromMap(event as Map<dynamic, dynamic>));
+      .map((dynamic event) => TcpEvent.fromMap(event as Map<dynamic, dynamic>));
 
   /// This connection's events (`connected`/`disconnected`/`data`/`error`),
   /// filtered to the id [connect] returned. Safe for multiple listeners.

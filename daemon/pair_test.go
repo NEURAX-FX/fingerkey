@@ -300,7 +300,7 @@ func TestPairIssueTokenFormat(t *testing.T) {
 }
 
 // TestHandlePairResponseFields: POST /v1/pair returns a one-time token plus
-// the fingerprint, a numeric-IP host (never a hostname) and the TLS port.
+// the configured advertised host and TLS port.
 func TestHandlePairResponseFields(t *testing.T) {
 	store := NewStore()
 	pm := newPairManager(t.TempDir())
@@ -338,6 +338,35 @@ func TestHandlePairResponseFields(t *testing.T) {
 	rresp.Body.Close()
 	if rresp.StatusCode != http.StatusNotFound {
 		t.Errorf("GET /v1/pair = %d, want 404", rresp.StatusCode)
+	}
+}
+
+func TestValidateAdvertiseConfig(t *testing.T) {
+	valid := []struct {
+		host string
+		port int
+	}{
+		{host: "auth.example.com", port: 443},
+		{host: "2001:db8::7", port: 4443},
+		{host: "", port: 0},
+	}
+	for _, tc := range valid {
+		if err := validateAdvertiseConfig(tc.host, tc.port); err != nil {
+			t.Errorf("validateAdvertiseConfig(%q, %d): %v", tc.host, tc.port, err)
+		}
+	}
+	invalid := []struct {
+		host string
+		port int
+	}{
+		{host: "auth.example.com:443", port: 0},
+		{host: "auth.example.com/path", port: 0},
+		{host: "auth.example.com", port: 65536},
+	}
+	for _, tc := range invalid {
+		if err := validateAdvertiseConfig(tc.host, tc.port); err == nil {
+			t.Errorf("validateAdvertiseConfig(%q, %d) accepted invalid endpoint", tc.host, tc.port)
+		}
 	}
 }
 

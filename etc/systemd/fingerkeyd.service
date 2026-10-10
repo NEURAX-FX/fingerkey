@@ -8,6 +8,8 @@ User=phonefprint
 RuntimeDirectory=phone-fprint-auth
 RuntimeDirectoryMode=0700
 ExecStart=/usr/local/libexec/fingerkeyd -socket /run/phone-fprint-auth/daemon.sock -keys-dir /var/lib/phone-fprint-auth/keys -addr :4443 -tls-dir /var/lib/phone-fprint-auth/tls -max-conns 16 -max-conns-per-ip 4
+# For direct Internet pairing, override ExecStart in a systemd drop-in and add
+# -advertise-host <public DNS/IP> -advertise-port <forwarded TCP port>.
 Restart=on-failure
 
 [Install]

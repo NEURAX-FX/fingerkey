@@ -23,7 +23,13 @@ fi
 UNIT="/etc/systemd/system/fingerkeyd.service"
 DAEMON_BIN="/usr/local/libexec/fingerkeyd"
 PAIR_BIN="/usr/local/bin/fingerkey"
-PAM_MODULE="/usr/lib/x86_64-linux-gnu/security/pam_fingerkey.so"
+PAM_MODULE=""
+for dir in /usr/lib64/security /usr/lib/x86_64-linux-gnu/security /usr/lib/security; do
+    if [[ -d "${dir}" ]]; then
+        PAM_MODULE="${dir}/pam_fingerkey.so"
+        break
+    fi
+done
 STATE_PARENT="/var/lib/phone-fprint-auth"
 KEYS_DIR="${STATE_PARENT}/keys"
 TLS_DIR="${STATE_PARENT}/tls"
@@ -86,6 +92,10 @@ restore_pam_file() {
     local rc=0
 
     echo "== PAM restore (${pam_file}) =="
+    if [[ ! -e "${pam_file}" ]]; then
+        echo "${pam_file} not present — skipping"
+        return 0
+    fi
     for f in "${pam_file}".orig-*; do
         [[ -e "${f}" ]] || continue
         if [[ -z "${newest_backup}" ]] || [[ "${f}" -nt "${newest_backup}" ]]; then

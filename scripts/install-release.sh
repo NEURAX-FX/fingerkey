@@ -18,7 +18,18 @@ fi
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DAEMON_BIN="/usr/local/libexec/fingerkeyd"
 PAIR_BIN="/usr/local/bin/fingerkey"
-PAM_MODULE="/usr/lib/x86_64-linux-gnu/security/pam_fingerkey.so"
+PAM_LIBDIR=""
+for dir in /usr/lib64/security /usr/lib/x86_64-linux-gnu/security /usr/lib/security; do
+    if [[ -d "${dir}" ]]; then
+        PAM_LIBDIR="${dir}"
+        break
+    fi
+done
+if [[ -z "${PAM_LIBDIR}" ]]; then
+    echo "error: no PAM module directory found" >&2
+    exit 1
+fi
+PAM_MODULE="${PAM_LIBDIR}/pam_fingerkey.so"
 UNIT_DST="/etc/systemd/system/fingerkeyd.service"
 DAEMON_USER="phonefprint"
 KEYS_PARENT="/var/lib/phone-fprint-auth"
@@ -58,11 +69,19 @@ systemctl enable --now fingerkeyd
 
 echo "== PAM wiring =="
 for pam_file in /etc/pam.d/sudo /etc/pam.d/polkit-1; do
+    if [[ ! -e "${pam_file}" ]]; then
+        echo "pam: ${pam_file} not present — skipping"
+        continue
+    fi
     if grep -q 'pam_fingerkey.so' "${pam_file}"; then
         echo "pam: '${PAM_LINE}' already present in ${pam_file} — skipping"
     else
         cp -p "${pam_file}" "${pam_file}.orig-$(date +%s)"
-        sed -i "/^@include[[:space:]]\\+common-auth\$/i ${PAM_LINE}" "${pam_file}"
+        if ! grep -Eq '^[[:space:]]*auth[[:space:]]' "${pam_file}"; then
+            echo "error: no auth rule found in ${pam_file}" >&2
+            exit 1
+        fi
+        sed -i '0,/^[[:space:]]*auth[[:space:]]/i auth sufficient pam_fingerkey.so' "${pam_file}"
         echo "pam: inserted '${PAM_LINE}' into ${pam_file}"
     fi
 done

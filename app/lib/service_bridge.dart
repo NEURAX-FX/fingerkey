@@ -13,10 +13,10 @@
 ///     screen is alive; receives pushed events (pending / decision-result /
 ///     unregistered) and RPC replies.
 ///
-/// The UI still performs a direct TLS dial for QR pairing; that traffic is
+/// The UI performs a direct TLS dial for manual pairing; that traffic is
 /// delegated at the channel level to the same process-wide [TcpTlsChannel]
-/// (see `TcpTlsChannelDelegate.kt`), so even pairing sockets are owned by
-/// the service engine.
+/// (see `TcpTlsChannelDelegate.kt`), so pairing sockets are owned by the
+/// service engine.
 library;
 
 import 'dart:async';

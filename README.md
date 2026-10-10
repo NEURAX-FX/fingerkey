@@ -45,6 +45,28 @@ The phone link is TLS over TCP (default port 4443). The daemon holds a self-sign
 - The unix socket at `/run/phone-fprint-auth/daemon.sock` (mode 0700) is root-only. Only root, or a setuid-root process such as the PAM module, can create or poll a session.
 - Only registered phones receive pushes. A TLS client that completes the handshake but does not present a paired key (or a valid pairing token) gets `welcome{registered:false}` and is disconnected: it sees no pending sessions and no decision results.
 
+## Public network (direct TCP)
+
+The daemon can advertise a public DNS name or IP in the manual pairing output. This is direct Internet access through a router/firewall port forward, not a relay or NAT traversal service:
+
+1. Forward the public TCP port to the daemon's TLS listener (default internal port `4443`), and allow only that TCP port in the firewall.
+2. Start the daemon with `-advertise-host auth.example.com` and `-advertise-port 443` (use the public IP if there is no DNS name).
+3. Run `sudo fingerkey pair-code my-phone` and enter the printed fields in the app.
+
+The app accepts public hostnames and IPv6 endpoints, stores the advertised endpoint, and reconnects to it without mDNS. Certificate fingerprint pinning, the one-time 60-second pairing token, and Ed25519 decision signatures remain unchanged. mDNS is still LAN-only discovery. Networks behind CGNAT or with no inbound port forwarding still require a VPN such as WireGuard/Tailscale; this change does not add a hosted relay.
+
+
+For the packaged systemd service, use a drop-in instead of editing the unit:
+
+```ini
+# sudo systemctl edit fingerkeyd
+[Service]
+ExecStart=
+ExecStart=/usr/local/libexec/fingerkeyd -socket /run/phone-fprint-auth/daemon.sock -keys-dir /var/lib/phone-fprint-auth/keys -addr :4443 -tls-dir /var/lib/phone-fprint-auth/tls -advertise-host auth.example.com -advertise-port 443 -max-conns 16 -max-conns-per-ip 4
+```
+
+Then run `sudo systemctl daemon-reload && sudo systemctl restart fingerkeyd`.
+
 Frames are length-prefixed JSON (4-byte big-endian length plus payload):
 
 - `{"type":"hello",...}` phone → daemon, first frame: pubkey, optional pairing token
@@ -68,15 +90,15 @@ flowchart LR
 
 | Path | What it is |
 | --- | --- |
-| `daemon/` | Go single binary `fingerkeyd`, run as the `phonefprint` user. Holds pending sessions, issues nonces, verifies signed decisions. Two surfaces: the root-only unix socket `/run/phone-fprint-auth/daemon.sock` (`POST /v1/session`, `GET /v1/session/{id}`, `POST /v1/pair`, used by the PAM module and the pair CLI) and the TLS phone listener. Flags include `-keys-dir`, `-addr` (default `:4443`), `-tls-dir`, `-max-conns` (default 16), and `-max-conns-per-ip` (default 4). |
+| `daemon/` | Go single binary `fingerkeyd`, run as the `phonefprint` user. Holds pending sessions, issues nonces, verifies signed decisions. Two surfaces: the root-only unix socket `/run/phone-fprint-auth/daemon.sock` (`POST /v1/session`, `GET /v1/session/{id}`, `POST /v1/pair`, used by the PAM module and the pair CLI) and the TLS phone listener. Flags include `-keys-dir`, `-addr` (default `:4443`), `-tls-dir`, `-advertise-host` (public pairing host, empty = detected LAN IPv4), `-advertise-port` (public pairing port, 0 = listener port), `-max-conns` (default 16), and `-max-conns-per-ip` (default 4).`
 | `pam/pam_fingerkey.c` | Native C PAM module. `pam_sm_authenticate` creates a session and polls up to 60 seconds, returns `PAM_SUCCESS` on approve, `PAM_AUTH_ERR` otherwise. A non-2xx session creation (daemon down, no paired keys, no phone connected) fails fast instead of hanging the 60 seconds. The `socket=<path>` argument overrides the daemon socket (used by tests and throwaway PAM services). It also forwards the caller's `FINGERKEY_REASON` (if set) and the objective `/proc/self/cmdline` as display-only metadata. |
 | `scripts/install.sh` | Root install: builds and installs the daemon, pair CLI and PAM module; creates the `phonefprint` user plus the key and TLS directories; installs and starts the systemd unit (TLS on `:4443`); wires the module into `/etc/pam.d/sudo` and `/etc/pam.d/polkit-1`. It also drops a sudoers snippet (`/etc/sudoers.d/phone-fprint-auth`) that keeps `FINGERKEY_REASON` across sudo. |
 | `scripts/rollback.sh` | Reverses the install and restores the original PAM files. |
 | `scripts/e2e-local.sh` | One-command local end-to-end test (no root, no phone): builds the daemon and simulator into a throwaway tmpdir and runs the approve, deny, reconnect, unregistered-gating, timeout and wrong-fingerprint scenarios. Needs `go`, `curl` and `jq`; about 90 seconds. |
-| `scripts/fingerkey/` | Pair CLI: `pair-qr <name>`, `pair <name> <pubkey_b64>`, `list`, `remove <name>` (pair, remove and pair-qr need root; list does not). |
+| `scripts/fingerkey/` | Pair CLI: `pair-code <name>` prints the server, port, TLS fingerprint, one-time token, and computer name for manual App pairing; `pair <name> <pubkey_b64>`, `list`, and `remove <name>` manage keys. Legacy QR output is removed. |
 | `scripts/phone-sim/` | Simulator for testing. Dials the daemon's TLS listener, pins it by fingerprint, and speaks the same framed protocol as the app: `-addr <host:port> -fp <hex> -key <priv_b64> [-decision approve|deny|hold] [-once]`; `-keygen` prints a fresh keypair. |
 | `scripts/format/` | Shared Go helper for the pinned signed-message byte format, used by the simulator. |
-| `app/` | Flutter Android app **FingerKey** (package `com.phonefprint.auth`). Scans the pairing QR, pins the certificate fingerprint, connects to every reachable computer, and signs approvals with BiometricPrompt. Keeps the link alive in a foreground service (a headless Flutter engine owns the sockets) and shows a native overlay card for background requests; settings page for the approval sound and paired computers. |
+| `app/` | Flutter Android app **FingerKey** (package `com.phonefprint.auth`). Uses manual TCP pairing: enter the endpoint, TLS fingerprint, and one-time token; the app sends its Ed25519 public key automatically. Keeps the link alive in a foreground service and shows native background approval overlays. |
 | `etc/` | systemd unit. |
 
 ## Prerequisites
@@ -127,15 +149,15 @@ The Go checksum database verification against `sum.golang.org` stays enabled; th
 
 ## Pair your phone
 
-1. On the computer, print a pairing QR for a name you choose. The name is how the key shows up in `list` and in audit logs:
+1. On the computer, print a short-lived manual pairing code:
 
 ```sh
-sudo fingerkey pair-qr my-phone
+sudo fingerkey pair-code my-phone
 ```
 
-2. Open the app, choose "Add computer", and scan the terminal QR. The code carries the computer's LAN address, TLS fingerprint, and a one-time token (`phonefprint://<ip>:<port>?fp=<hex>&t=<token>&n=<hostname>`). The app dials the computer, pins the fingerprint, and sends its Ed25519 public key with the token. The daemon registers the key as `my-phone` automatically.
+2. In the app, choose "Add computer". Enter the printed `Server`, `Port`, `TLS fingerprint`, and `Pairing token`; optionally enter the computer name. Tap `PAIR OVER TCP`. The app sends its Ed25519 public key automatically over the pinned TLS connection, and the daemon registers it under the requested name.
 
-There is no copy-paste step and no daemon restart. Paired keys are read on every request, so pairing (and removal) takes effect immediately. The token is one-time and expires after 60 seconds; if it expires, run `pair-qr` again.
+The token is one-time and expires after 60 seconds. Generate a new `pair-code` if it expires. No camera, QR, mDNS, or copy-pasted public key is needed.
 
 Manage paired phones:
 
@@ -144,11 +166,11 @@ fingerkey list                   # names of paired keys
 sudo fingerkey remove my-phone   # unpair; takes effect immediately
 ```
 
-`pair <name> <pubkey_b64>` still works for registering a key by hand. `pair`, `remove`, and `pair-qr` require root (they write the root/`phonefprint`-owned key store); `list` does not.
+`pair <name> <pubkey_b64>` still works for registering a key by hand. `pair`, `remove`, and `pair-code` require root; `list` does not.
 
 ## Usage
 
-1. Keep the phone on the same LAN as the computer. The app runs a **background service** that keeps a link to every paired computer, so it keeps working when not in the foreground.
+1. Keep the phone connected to the server endpoint. The app runs a **background service** that keeps a link to every paired computer, so it keeps working when not in the foreground.
 2. Run `sudo`, a pkexec action (for example `pkexec ...` or a GUI policy dialog), or any other PAM-authenticated command (`su`, `login`, `sshd`, …).
 3. The app shows the request with the user, service and tty context, the **reason** (a short note the caller may attach via the `FINGERKEY_REASON` env var) and the **command** it is about to run, plus a countdown. Approve with your fingerprint.
 4. The command proceeds. If you deny, or nothing happens within 60 seconds, the normal password prompt appears.
@@ -170,8 +192,8 @@ The background popup needs:
 
 ### Multiple devices
 
-- **One phone, many computers.** The app keeps one keypair and pairs with each computer separately by scanning its QR. It reconnects to every reachable computer and shows pending requests from all of them.
-- **One computer, many phones.** Run `pair-qr` once per phone. Any registered phone can approve; the first decision that arrives wins, and every registered phone gets the same `decision-result`. Deciding an already-decided session is idempotent, so a phone that reconnects recovers the verdict instead of an error.
+- **One phone, many computers.** The app keeps one keypair and pairs with each computer separately through manual TCP fields. It reconnects to every reachable computer and shows pending requests from all of them.
+- **One computer, many phones.** Run `pair-code` once per phone. Any registered phone can approve; the first decision that arrives wins, and every registered phone gets the same `decision-result`.
 
 ## Which services use it
 
@@ -185,7 +207,7 @@ Boundaries:
 
 - It implements only the `auth` stage — no `account`, `session`, or password-change hooks. It authenticates; it does not manage account validity or sessions.
 - `sufficient` means approve skips the rest of the stack and anything else falls through to the password prompt. Keep it first so the phone is asked instead of the password.
-- The phone must be reachable on the same LAN and `fingerkeyd` must be running when the prompt happens. Fine for interactive elevation and login; for SSH from outside the LAN the phone is unreachable and auth falls back to the password (the designed safe path).
+- The phone must be reachable from the daemon when the prompt happens. Same-LAN mDNS remains the default; a configured public endpoint works through direct TCP port forwarding. If the phone cannot reach the endpoint, PAM safely falls back to the password prompt.
 - Tools that bypass PAM (`doas`, setuid programs that read shadow directly) cannot use it.
 
 ## Test without a phone
@@ -219,7 +241,7 @@ Events:
 - `event=session-created` (`id`, `user`, `service`, `tty`): a PAM module created a session.
 - `event=decision` (`id`, `decision=approve|deny`, `key=<paired name>`): a signed decision was accepted.
 - `event=decision-failed` (`id`, `reason`): a decision was rejected. Reasons: `bad-decision`, `invalid-signature`, `unpaired-key`, `unknown-session`.
-- `event=pair-registered` (`key`, `replaced`): a phone completed QR pairing and its key was stored (`replaced=true` when it overwrote an existing key).
+- `event=pair-registered` (`key`, `replaced`): a phone completed manual token pairing and its key was stored (`replaced=true` when it overwrote an existing key).
 - `event=pair-failed` (`reason`): a pairing token was refused. Reasons: `unknown-token`, `expired-token`, `key-write-failed`.
 - `event=push-dropped` (`id`, `user`, `service`, `tty`, or `frame=decision-result`): an outbound queue was full, so a pending push or decision result was dropped.
 - `event=conn-limit` (`ip`): a TLS connection was rejected at accept time because the total or per-IP limit was reached.
@@ -239,10 +261,10 @@ Rollback removes `/var/lib/phone-fprint-auth/tls`, so a later reinstall generate
 ## Threat model and security notes
 
 - **Certificate pinning is the trust anchor.** The phone trusts exactly one server identity: the lowercase hex SHA-256 fingerprint of the daemon's self-signed certificate. A machine on the LAN without the private key cannot impersonate the daemon, and there is no CA to compromise.
-- **Regenerating the certificate changes the fingerprint.** If you roll back and reinstall, delete or wipe `/var/lib/phone-fprint-auth/tls`, or the certificate is otherwise lost, the daemon creates a new identity. The app still pins the old fingerprint, so it refuses the new server until you re-pair every phone with `pair-qr`. Treat the TLS directory as part of the pairing state.
+- **Regenerating the certificate changes the fingerprint.** If you roll back and reinstall, delete or wipe `/var/lib/phone-fprint-auth/tls`, or the certificate is otherwise lost, the daemon creates a new identity. The app still pins the old fingerprint, so it refuses the new server until you pair again with fresh manual fields. Treat the TLS directory as part of the pairing state.
 - **Signed, nonce-bound decisions.** The phone signs `"phone-fprint-auth/v1" || 0x00 || action || 0x00 || u8len(user) || user || u8len(service) || service || u8len(tty) || tty || nonce` with Ed25519. The nonce is one-time, the session expires after 60 seconds, and the context is inside the signed bytes, so a captured decision cannot be replayed against a different request.
 - **Reason and command are display-only.** The `FINGERKEY_REASON` note and the command shown on the approval card are not signed, not audit-logged, and take no part in the approval decision.
-- **Approval authority is explicit registration.** Only public keys added by `pair-qr` (or `pair`) can produce an accepted decision; anything else is rejected as `unpaired-key`. Holding the TLS fingerprint alone does not grant approval.
+- **Approval authority is explicit registration.** Only public keys added by `pair-code` or `pair` can produce an accepted decision; anything else is rejected as `unpaired-key`. Holding the TLS fingerprint alone does not grant approval.
 - **Unregistered clients get nothing.** A TLS client without a paired key is answered with `welcome{registered:false}` and closed before it can subscribe: no pending sessions and no decision results. A phone that is removed stops receiving pushes immediately.
 - **The unix socket is root-only.** `POST /v1/session`, `GET /v1/session/{id}` and `POST /v1/pair` live on `/run/phone-fprint-auth/daemon.sock` (socket and parent dir 0700). Only root, or a setuid-root process such as the PAM module, can create sessions or mint pairing tokens, so nobody else can forge prompt spam or decoy requests.
 - **Only public keys live on the daemon.** The phone keeps its private key. Compromising the daemon does not leak anything that can sign an approval.
@@ -252,7 +274,7 @@ Rollback removes `/var/lib/phone-fprint-auth/tls`, so a later reinstall generate
 
 Residual risks:
 
-- **The pairing token is the trust bootstrap.** Anyone who scans the QR (or reads the token) during its 60 second life can register a key under that name. Keep the QR off shared screens, and run `pair-qr` again if it may have leaked.
+- **The pairing token is the trust bootstrap.** Anyone who reads the printed token during its 60 second life can register a key under that name. Share the five fields only with the intended phone; the TLS fingerprint must still match the daemon certificate.
 - **LAN exposure.** The TLS listener binds `:4443` on all interfaces. Anyone on the LAN can attempt a handshake and read the certificate fingerprint; only paired phones get past the registration gate. Restrict the port with a firewall if your network is untrusted.
 - **Denial of service is bounded.** Connection counts are capped (`-max-conns`, `-max-conns-per-ip`) and sessions are bounded and TTL-expired, so a flood cannot exhaust the daemon or the PAM wait.
 
