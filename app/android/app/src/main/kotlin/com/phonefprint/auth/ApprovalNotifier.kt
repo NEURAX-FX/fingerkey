@@ -1,3 +1,6 @@
+// Copyright 2026, FingerKey contributors
+// SPDX-License-Identifier: MIT
+
 package com.phonefprint.auth
 
 import android.app.Notification
@@ -7,204 +10,112 @@ import android.app.PendingIntent
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
-import io.flutter.embedding.engine.plugins.FlutterPlugin
-import io.flutter.plugin.common.MethodCall
-import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugin.common.MethodChannel.MethodCallHandler
+import android.util.Log
 
-/**
- * High-priority approval-request notifier, driven by the service engine's
- * background isolate (lib/service_bridge.dart) over MethodChannel
- * "com.phonefprint.auth/notify":
- *
- *   - showApproval({id, user, service, reason, command, sound}) -> "posted"
- *   - cancel({id}) -> null (dismisses the notification that showApproval posted)
- *
- * Pairs with [OverlayWindow]: when a pending request arrives while the UI
- * isolate is not attached (app backgrounded/killed), the service engine
- * posts this heads-up notification AND shows the overlay card. The `sound`
- * flag mirrors the persisted `soundEnabled` preference read by the Dart
- * side and picks between two high-importance channels — `approval` (default
- * sound) and `approval_silent` (muted) — because Android 8+ makes a
- * channel's sound immutable after first creation. The persistent
- * low-importance `approval_link` FGS channel is untouched.
- *
- * SINGLE OWNERSHIP: like [OverlayWindow], exactly one instance exists per
- * process, held by [EngineHolder] and attached to the headless engine of
- * [ApprovalForegroundService] — the service engine is its only owner.
- */
-class ApprovalNotifier(context: Context? = null) :
-    FlutterPlugin, MethodCallHandler {
+/** Notification failures are presentation failures, never connection failures. */
+class ApprovalNotifier(context: Context) {
+    private val appContext = context.applicationContext
+    private val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private val posted = mutableMapOf<ApprovalKey, PendingApproval>()
 
-    companion object {
-        const val METHOD_CHANNEL = "com.phonefprint.auth/notify"
-
-        /**
-         * High-importance alert channels for incoming requests. Two channels
-         * are needed because Android 8+ makes a channel's sound immutable
-         * after first creation: `approval` carries the default notification
-         * sound, `approval_silent` is silent. The per-post `sound` flag from
-         * the Dart side picks the channel.
-         */
-        private const val CHANNEL_ID = "approval"
-        private const val CHANNEL_ID_SILENT = "approval_silent"
-
-        /** Base offset for per-request notification ids (the FGS uses 1001). */
-        private const val NOTIFICATION_ID_BASE = 2000
-    }
-
-    private var applicationContext: Context? = context
-    private var methodChannel: MethodChannel? = null
-
-    // ---- FlutterPlugin --------------------------------------------------
-
-    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        applicationContext = binding.applicationContext
-        methodChannel = MethodChannel(binding.binaryMessenger, METHOD_CHANNEL)
-        methodChannel?.setMethodCallHandler(this)
-    }
-
-    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        methodChannel?.setMethodCallHandler(null)
-        methodChannel = null
-        applicationContext = null
-    }
-
-    // ---- MethodChannel.MethodCallHandler --------------------------------
-
-    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
-        when (call.method) {
-            "showApproval" -> showApproval(call, result)
-            "cancel" -> cancel(call, result)
-            else -> result.notImplemented()
-        }
-    }
-
-    private fun cancel(call: MethodCall, result: MethodChannel.Result) {
-        val context = applicationContext
-        if (context == null) {
-            result.error("no_context", "Plugin not attached", null)
-            return
-        }
-        val id = call.argument<String>("id") ?: ""
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        // Same id math as postApprovalNotification: a resolved/expired session
-        // must cancel the exact notification its pending request posted.
-        nm.cancel(NOTIFICATION_ID_BASE + (id.hashCode() and 0x7fffffff))
-        result.success(null)
-    }
-
-    private fun showApproval(call: MethodCall, result: MethodChannel.Result) {
-        val context = applicationContext
-        if (context == null) {
-            result.error("no_context", "Plugin not attached", null)
-            return
-        }
-        val id = call.argument<String>("id") ?: ""
-        val user = call.argument<String>("user") ?: ""
-        val service = call.argument<String>("service") ?: ""
-        val reason = call.argument<String>("reason") ?: ""
-        val command = call.argument<String>("command") ?: ""
-        val sound = call.argument<Boolean>("sound") ?: true
-        postApprovalNotification(context, id, user, service, reason, command, sound)
-        result.success("posted")
-    }
-
-    // ---- notification ----------------------------------------------------
-
-    /**
-     * Creates the two high-importance channels on Android 8+. Sound is
-     * immutable after creation, so one channel carries the default sound and
-     * the other is silent; the per-post `sound` flag picks between them. The
-     * low-importance `approval_link` FGS channel is untouched.
-     */
-    private fun ensureChannels(nm: NotificationManager) {
-        nm.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                "Approval requests",
-                NotificationManager.IMPORTANCE_HIGH,
-            ).apply {
-                description = "Incoming sudo/pkexec approval requests"
-                setSound(
-                    Settings.System.DEFAULT_NOTIFICATION_URI,
-                    Notification.AUDIO_ATTRIBUTES_DEFAULT,
-                )
-            },
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID_SILENT,
-                "Approval requests (silent)",
-                NotificationManager.IMPORTANCE_HIGH,
-            ).apply {
-                description = "Incoming sudo/pkexec approval requests without sound"
-                setSound(null, null)
-            },
-        )
-    }
-
-    private fun postApprovalNotification(
-        context: Context,
-        id: String,
-        user: String,
-        service: String,
-        reason: String,
-        command: String,
-        sound: Boolean,
-    ) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        // Android 8+ ignores channel sound changes after the channel exists,
-        // so the sound decision is made by choosing between two pre-created
-        // channels instead of mutating one.
-        val channelId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ensureChannels(nm)
-            if (sound) CHANNEL_ID else CHANNEL_ID_SILENT
-        } else {
-            CHANNEL_ID
-        }
-
-        val title = when {
-            user.isNotBlank() && service.isNotBlank() ->
-                "Approve sudo/pkexec for $user on $service?"
-            user.isNotBlank() -> "Approve sudo/pkexec for $user?"
-            else -> "Approve sudo/pkexec?"
-        }
-        val text = when {
-            reason.isNotBlank() -> "Reason: $reason"
-            command.isNotBlank() -> "Command: $command"
-            else -> "Open FingerKey to review and approve"
-        }
-
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        val contentIntent = PendingIntent.getActivity(
-            context,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(context, channelId)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(context)
-        }
-        builder
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setContentIntent(contentIntent)
-            .setCategory(Notification.CATEGORY_ALARM)
-            .setAutoCancel(true)
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            @Suppress("DEPRECATION")
-            builder.setPriority(Notification.PRIORITY_HIGH)
-            if (sound) {
-                @Suppress("DEPRECATION")
-                builder.setDefaults(Notification.DEFAULT_SOUND)
+    fun reconcile(approvals: List<PendingApproval>, newKeys: Set<ApprovalKey>, soundEnabled: Boolean) {
+        val liveKeys = approvals.mapTo(mutableSetOf()) { it.key }
+        posted.keys.toList().filterNot { it in liveKeys }.forEach(::cancel)
+        approvals.forEach { approval ->
+            if (posted[approval.key] != approval) {
+                show(approval, approval.key in newKeys, soundEnabled)
             }
         }
-        // One notification per session id; a re-post replaces the old one.
-        nm.notify(NOTIFICATION_ID_BASE + (id.hashCode() and 0x7fffffff), builder.build())
+    }
+
+    fun clear() = posted.keys.toList().forEach(::cancel)
+
+    private fun show(approval: PendingApproval, newRequest: Boolean, soundEnabled: Boolean) {
+        val alert = newRequest && soundEnabled
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ensureChannels()
+            val pendingIntent = PendingIntent.getActivity(
+                appContext, 0, FingerKeyRuntime.approvalIntent(appContext, approval.key, approve = true),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val detail = buildString {
+                append("${approval.serverName} · ${approval.user} · ${approval.service}")
+                if (approval.tty.isNotBlank()) append("\nTerminal: ${approval.tty}")
+                if (approval.reason.isNotBlank()) append("\nReason: ${approval.reason}")
+                if (approval.command.isNotBlank()) append("\nCommand: ${approval.command}")
+            }
+            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = when {
+                    !newRequest -> REPLAY_CHANNEL_ID
+                    alert -> CHANNEL_ID
+                    else -> SILENT_CHANNEL_ID
+                }
+                Notification.Builder(appContext, channel)
+            } else {
+                @Suppress("DEPRECATION")
+                Notification.Builder(appContext).apply {
+                    setPriority(if (newRequest) Notification.PRIORITY_HIGH else Notification.PRIORITY_LOW)
+                    setSound(if (alert) Settings.System.DEFAULT_NOTIFICATION_URI else null)
+                    setDefaults(0)
+                }
+            }
+            builder.setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("Approval requested · ${approval.serverName}")
+                .setContentText("${approval.user} · ${approval.service}")
+                .setStyle(Notification.BigTextStyle().bigText(detail))
+                .setContentIntent(pendingIntent)
+                .setCategory(Notification.CATEGORY_MESSAGE)
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .setOnlyAlertOnce(true)
+                .setAutoCancel(true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                builder.setTimeoutAfter((approval.expiresAt - System.currentTimeMillis()).coerceAtLeast(1))
+            }
+            manager.notify(tag(approval.key), NOTIFICATION_ID, builder.build())
+            posted[approval.key] = approval
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "Unable to post approval notification", error)
+        }
+    }
+
+    private fun cancel(key: ApprovalKey) {
+        posted.remove(key)
+        try {
+            manager.cancel(tag(key), NOTIFICATION_ID)
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "Unable to cancel approval notification", error)
+        }
+    }
+
+    private fun ensureChannels() {
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, "Approval requests", NotificationManager.IMPORTANCE_HIGH).apply {
+                setSound(Settings.System.DEFAULT_NOTIFICATION_URI, Notification.AUDIO_ATTRIBUTES_DEFAULT)
+                enableVibration(false)
+            },
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(SILENT_CHANNEL_ID, "Approval requests (silent)", NotificationManager.IMPORTANCE_HIGH).apply {
+                setSound(null, null)
+                enableVibration(false)
+            },
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(REPLAY_CHANNEL_ID, "Pending approvals", NotificationManager.IMPORTANCE_LOW).apply {
+                setSound(null, null)
+                enableVibration(false)
+            },
+        )
+    }
+
+    // Length prefixes retain the entire composite key without hash or delimiter collisions.
+    private fun tag(key: ApprovalKey) = "approval:${key.serverId.length}:${key.serverId}${key.id.length}:${key.id}"
+
+    companion object {
+        private const val TAG = "ApprovalNotifier"
+        private const val CHANNEL_ID = "approval_requests_sound_v2"
+        private const val SILENT_CHANNEL_ID = "approval_requests_silent_v2"
+        private const val REPLAY_CHANNEL_ID = "approval_requests_pending_v2"
+        private const val NOTIFICATION_ID = 1
     }
 }

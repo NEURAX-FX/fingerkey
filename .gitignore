@@ -4,3 +4,4 @@
 daemon/daemon
 /phone-approve
 app/android/build/
+.codegraph/

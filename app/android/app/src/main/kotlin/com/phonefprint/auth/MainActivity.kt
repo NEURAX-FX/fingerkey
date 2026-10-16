@@ -1,88 +1,135 @@
+// Copyright 2026, FingerKey contributors
+// SPDX-License-Identifier: MIT
+
 package com.phonefprint.auth
 
 import android.Manifest
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import io.flutter.embedding.android.FlutterFragmentActivity
-import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.embedding.engine.dart.DartExecutor
-import io.flutter.plugins.GeneratedPluginRegistrant
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import com.phonefprint.auth.ui.FingerKeyApp
 
 /**
- * UI host for the approval flow. SINGLE OWNERSHIP: this engine owns no
- * daemon socket. The persistent links live in the headless engine of
- * [ApprovalForegroundService] (started in [onCreate]); this engine:
- *  - shares the process [io.flutter.embedding.engine.FlutterEngineGroup]
- *    (one VM) via [provideFlutterEngine],
- *  - delegates pairing-time channel traffic to the service's single
- *    [TcpTlsChannel] through [TcpTlsChannelDelegate],
- *  - renders the service's pending stream via the cross-engine Dart bridge
- *    (lib/service_bridge.dart), never dialing for approvals.
- *
- * Overlay APPROVE taps (task 12) land here via [OverlayWindow]'s launch
- * Intent; the payload is handed to [OverlayLaunchBridge], which replays it
- * to the Dart approval screen so the biometric prompt runs here ONCE — this
- * Activity is the only place [local_auth] may run.
+ * Single host activity. Navigation, tabs and page chrome live in Compose; this class only owns the
+ * platform pieces: the biometric prompt for in-app approvals and the system-settings entries.
+ * Overlay approvals never reach here — they use [BiometricApprovalActivity].
  */
-class MainActivity : FlutterFragmentActivity() {
-
-    companion object {
-        private const val REQUEST_POST_NOTIFICATIONS = 1401
-    }
+class MainActivity : FragmentActivity() {
+    private lateinit var runtime: FingerKeyRuntime
+    private var biometricPrompt: BiometricPrompt? = null
+    private var biometricApproval: PendingApproval? = null
+    private var activityStarted = false
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Keep the approval link alive whenever the app is in use.
+        enableEdgeToEdge()
+        runtime = FingerKeyRuntime.get(applicationContext)
         ApprovalForegroundService.start(this)
-        // An overlay APPROVE tap launches this Activity with the session
-        // payload; store it for the Dart approval flow (task 12).
-        OverlayLaunchBridge.ingest(intent)
-        // Android 13+ (API 33) hides notifications until the user grants
-        // POST_NOTIFICATIONS at runtime. Request it here on first launch so
-        // the high-priority approval heads-up (ApprovalNotifier) is not
-        // silently dropped on fresh installs.
         if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            requestPermissions(
-                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                REQUEST_POST_NOTIFICATIONS,
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        setContent {
+            FingerKeyApp(
+                context = applicationContext,
+                onApprove = ::authenticateAndApprove,
+                onOpenOverlaySettings = ::openOverlaySettings,
+                onOpenBatterySettings = ::openBatterySettings,
+                onRequestNotifications = ::requestNotifications,
             )
         }
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        OverlayLaunchBridge.ingest(intent)
+    override fun onStart() {
+        super.onStart()
+        activityStarted = true
+        runtime.foreground.value = true
     }
 
-    override fun provideFlutterEngine(context: Context): FlutterEngine? =
-        // Spawn from the shared group so this engine and the service's
-        // headless engine run in one VM (same isolate group).
-        EngineHolder.engineGroup(context)
-            .createAndRunEngine(context, DartExecutor.DartEntrypoint.createDefault())
+    override fun onStop() {
+        activityStarted = false
+        runtime.foreground.value = false
+        biometricPrompt?.cancelAuthentication()
+        biometricPrompt = null
+        biometricApproval = null
+        super.onStop()
+    }
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
-        // provideFlutterEngine takes over the automatic plugin registration.
-        GeneratedPluginRegistrant.registerWith(flutterEngine)
-        // Delegate every TLS channel call to the service-owned instance.
-        flutterEngine.plugins.add(
-            TcpTlsChannelDelegate { EngineHolder.serviceChannel(applicationContext) },
+    /** Runs the system prompt and, only on success, hands the live request to the manager. */
+    private fun authenticateAndApprove(approval: PendingApproval) {
+        if (!activityStarted || biometricApproval != null) return
+        val live = runtime.manager.state.value.approvals.firstOrNull {
+            it.key == approval.key && it.nonce == approval.nonce
+        } ?: return
+        if (live.expiresAt <= System.currentTimeMillis() || live.key in runtime.manager.state.value.busy) return
+        biometricApproval = live
+        biometricPrompt = BiometricPrompt(
+            this,
+            ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    val candidate = biometricApproval
+                    biometricApproval = null
+                    biometricPrompt = null
+                    if (!activityStarted || candidate == null) return
+                    // Re-read key and nonce after the prompt; the manager validates again before signing.
+                    val current = runtime.manager.state.value.approvals.firstOrNull {
+                        it.key == candidate.key && it.nonce == candidate.nonce
+                    } ?: return
+                    runtime.manager.approve(current)
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    biometricApproval = null
+                    biometricPrompt = null
+                    if (activityStarted) Toast.makeText(this@MainActivity, errString, Toast.LENGTH_SHORT).show()
+                }
+            },
         )
-        // Replay overlay-APPROVE payloads to the UI isolate (task 12).
-        flutterEngine.plugins.add(OverlayLaunchBridge())
-        // Settings plumbing (task 13): battery-optimization state + the
-        // user-triggered exemption dialog, and the roster-configured marker
-        // consumed by the boot receiver. The marker is also registered on the
-        // service engine (ApprovalForegroundService) because roster writes
-        // happen in both.
-        PowerChannel.register(flutterEngine.dartExecutor.binaryMessenger, applicationContext)
-        KeepalivePrefs.register(flutterEngine.dartExecutor.binaryMessenger, applicationContext)
+        biometricPrompt?.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle("批准 ${live.serverName} 的请求")
+                .setSubtitle("${live.user} · ${live.service}")
+                .setDescription("验证指纹后才会向服务器发送签名批准")
+                .setNegativeButtonText("取消")
+                .build(),
+        )
+    }
+
+    private fun openOverlaySettings() {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        }.onFailure {
+            runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+        }
+    }
+
+    private fun openBatterySettings() {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        }.onFailure {
+            runCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+        }
+    }
+
+    private fun requestNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 }

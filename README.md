@@ -98,7 +98,7 @@ flowchart LR
 | `scripts/fingerkey/` | Pair CLI: `pair-code <name>` prints the server, port, TLS fingerprint, one-time token, and computer name for manual App pairing; `pair <name> <pubkey_b64>`, `list`, and `remove <name>` manage keys. Legacy QR output is removed. |
 | `scripts/phone-sim/` | Simulator for testing. Dials the daemon's TLS listener, pins it by fingerprint, and speaks the same framed protocol as the app: `-addr <host:port> -fp <hex> -key <priv_b64> [-decision approve|deny|hold] [-once]`; `-keygen` prints a fresh keypair. |
 | `scripts/format/` | Shared Go helper for the pinned signed-message byte format, used by the simulator. |
-| `app/` | Flutter Android app **FingerKey** (package `com.phonefprint.auth`). Uses manual TCP pairing: enter the endpoint, TLS fingerprint, and one-time token; the app sends its Ed25519 public key automatically. Keeps the link alive in a foreground service and shows native background approval overlays. |
+| `app/` | Android app **FingerKey** (package `com.phonefprint.auth`, Compose + Miuix). Uses manual TCP pairing: enter the endpoint, TLS fingerprint, and one-time token; the app sends its Ed25519 public key automatically. Keeps the link alive in a foreground service and shows background requests as a bottom sheet (or goes straight to the system prompt when 通用 → 直接弹出指纹 is on): leaving the sheet counts as no authentication, one 确认指纹 button opens the system biometric prompt, and on Android 15+ that prompt carries the command being approved. The UI follows Material You: 外观 settings offer 深浅色, 动态取色 (wallpaper palette), 调色板风格, 色板规范 and a seed colour, with frosted app bars and navigation bar on Android 12+. |
 | `etc/` | systemd unit. |
 
 ## Prerequisites
@@ -115,7 +115,7 @@ mDNS discovery runs inside the daemon, so no external discovery service is neede
 
 For the app:
 
-- Flutter with the Android SDK toolchain (`flutter analyze`, `flutter test`, `flutter build apk --release`)
+- Flutter with the Android SDK toolchain (`flutter analyze`, `flutter test`, `flutter build apk --release`) for the legacy Dart UI, or JDK 21 + the Android SDK for the native app (`cd app/android && ./gradlew :app:assembleDebug`)
 - An Android phone on the same LAN as the computer; the background popup needs the app permissions listed under Usage
 
 ## Build and install
@@ -282,7 +282,7 @@ Residual risks:
 
 | Path | Contents |
 | --- | --- |
-| `app/` | Flutter Android app (`com.phonefprint.auth`): keeps the link alive in a foreground service (headless Flutter engine) and shows a native overlay card for background requests; settings page for the approval sound and paired computers. Release APK at `app/build/app/outputs/flutter-apk/app-release.apk`. |
+| `app/` | Flutter Android app (`com.phonefprint.auth`): keeps the link alive in a foreground service (headless Flutter engine) and shows a native overlay card for background requests; settings page for the approval sound, appearance (dynamic colour, palette style, blur) and paired computers. Release APK at `app/build/app/outputs/flutter-apk/app-release.apk`. |
 | `daemon/` | Go approval daemon: unix socket surface, TLS phone listener, pairing tokens, mDNS, session store, lazy key loading, Ed25519 verification, unit tests. |
 | `etc/` | systemd unit. |
 | `pam/` | PAM module C source and build Makefile. |
