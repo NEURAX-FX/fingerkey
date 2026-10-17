@@ -24,8 +24,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -105,15 +108,31 @@ fun MonoValue(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** Title above a value, used for the detail rows on the home and about pages. */
+/** Label on the left, value right-aligned — InstallerX's info-row rhythm. */
 @Composable
-fun LabeledRow(label: String, value: String, modifier: Modifier = Modifier) {
-    Column(modifier.padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(label, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        Text(value, style = MiuixTheme.textStyles.body1)
+fun InfoRow(label: String, value: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MiuixTheme.textStyles.body2,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            value,
+            modifier = Modifier.weight(1f),
+            style = MiuixTheme.textStyles.body2,
+            textAlign = TextAlign.End,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
+/** One-line link summary used by the home app-bar subtitle. */
 fun connectionSummary(state: ManagerState): String {
     val online = state.servers.count { it.linkState == LinkState.AUTHENTICATED }
     return when {
@@ -159,8 +178,8 @@ fun StatCard(
         onClick = onClick,
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
                 title,
@@ -213,9 +232,9 @@ fun PushedPage(
                 .overScrollVertical()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
             contentPadding = PaddingValues(
-                start = PageGutter,
+                start = 0.dp,
                 top = innerPadding.calculateTopPadding() + PageGutter,
-                end = PageGutter,
+                end = 0.dp,
                 bottom = innerPadding.calculateBottomPadding() + 32.dp,
             ),
             overscrollEffect = null,

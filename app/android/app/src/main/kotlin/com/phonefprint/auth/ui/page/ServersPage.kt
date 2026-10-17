@@ -70,8 +70,6 @@ fun ServersPage(
                 title = title,
                 modifier = Modifier.glassEffect(backdrop),
                 color = backdrop.barColor(),
-                largeTitle = title,
-                subtitle = if (state.servers.isEmpty()) "尚未配对" else "${state.servers.size} 台已配对",
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -84,9 +82,9 @@ fun ServersPage(
                 .overScrollVertical()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
             contentPadding = PaddingValues(
-                start = PageGutter,
+                start = 0.dp,
                 top = innerPadding.calculateTopPadding() + PageGutter,
-                end = PageGutter,
+                end = 0.dp,
                 bottom = outerPadding.calculateBottomPadding() + 32.dp,
             ),
             overscrollEffect = null,
@@ -96,7 +94,7 @@ fun ServersPage(
                     EmptyServersCard(onAddServer = { navigator.push(Route.Pairing) })
                 }
             } else {
-                item { SmallTitle("已配对") }
+                item { SmallTitle("已配对", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
                 items(state.servers.size, key = { index -> state.servers[index].config.id }) { index ->
                     val server = state.servers[index]
                     ServerCard(
@@ -109,7 +107,7 @@ fun ServersPage(
 
             state.error?.let { message ->
                 item {
-                    TipCard(modifier = Modifier.padding(bottom = PageGutter)) {
+                    TipCard(modifier = Modifier.padding(horizontal = PageGutter).padding(bottom = PageGutter)) {
                         Text(
                             "操作未完成",
                             style = MiuixTheme.textStyles.headline2,
@@ -127,7 +125,7 @@ fun ServersPage(
                     "服务器身份由 TLS 指纹固定：地址变化不影响信任关系，指纹变化会立即中断连接。",
                     style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = PageGutter + 16.dp, vertical = 4.dp),
                 )
             }
         }
@@ -137,8 +135,8 @@ fun ServersPage(
 @Composable
 private fun EmptyServersCard(onAddServer: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
-        insideMargin = PaddingValues(24.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
+        insideMargin = PaddingValues(16.dp),
     ) {
         Icon(
             MiuixIcons.ScreenMirroring,
@@ -167,7 +165,7 @@ private fun EmptyServersCard(onAddServer: () -> Unit) {
 @Composable
 private fun ServerCard(server: ServerState, onOpen: () -> Unit, onReconnect: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         onClick = onOpen,
     ) {
@@ -193,7 +191,7 @@ private fun ServerCard(server: ServerState, onOpen: () -> Unit, onReconnect: () 
                 text = "重连",
                 onClick = onReconnect,
                 colors = ButtonDefaults.textButtonColors(
-                    color = MiuixTheme.colorScheme.surfaceContainer,
+                    color = MiuixTheme.colorScheme.surfaceContainerHigh,
                     textColor = MiuixTheme.colorScheme.primary,
                 ),
             )

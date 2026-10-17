@@ -27,11 +27,11 @@ import com.phonefprint.auth.ui.widgets.PushedPage
 fun AboutPage(context: Context, onBack: () -> Unit, onOpenRepository: () -> Unit) {
     val version = rememberVersion(context)
     PushedPage(title = "关于", onBack = onBack) {
-        item { SmallTitle("应用") }
+        item { SmallTitle("应用", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
-                insideMargin = PaddingValues(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
+                insideMargin = PaddingValues(16.dp),
             ) {
                 Text("FingerKey", style = MiuixTheme.textStyles.headline1)
                 Spacer(Modifier.height(6.dp))
@@ -44,11 +44,11 @@ fun AboutPage(context: Context, onBack: () -> Unit, onOpenRepository: () -> Unit
             }
         }
 
-        item { SmallTitle("工作原理") }
+        item { SmallTitle("工作原理", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
-                insideMargin = PaddingValues(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
+                insideMargin = PaddingValues(16.dp),
             ) {
                 Text("PAM 模块向本机 daemon 申请会话，daemon 通过 TLS 把请求推送到手机。", style = MiuixTheme.textStyles.body2)
                 Spacer(Modifier.height(8.dp))

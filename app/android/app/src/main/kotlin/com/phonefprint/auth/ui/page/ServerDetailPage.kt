@@ -31,7 +31,7 @@ import com.phonefprint.auth.ManagerState
 import com.phonefprint.auth.ServerManager
 import com.phonefprint.auth.ui.widgets.PageGutter
 import com.phonefprint.auth.ui.widgets.PushedPage
-import com.phonefprint.auth.ui.widgets.LabeledRow
+import com.phonefprint.auth.ui.widgets.InfoRow
 import com.phonefprint.auth.ui.widgets.StatusLine
 
 /** Detail page for one paired computer: identity, status and the lifecycle actions. */
@@ -51,7 +51,7 @@ fun ServerDetailPage(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    insideMargin = PaddingValues(20.dp),
+                    insideMargin = PaddingValues(16.dp),
                 ) {
                     Text("该服务器已不在配对列表中。", style = MiuixTheme.textStyles.body1)
                 }
@@ -59,16 +59,16 @@ fun ServerDetailPage(
             return@PushedPage
         }
 
-        item { SmallTitle("状态") }
+        item { SmallTitle("状态", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
                 insideMargin = PaddingValues(vertical = 8.dp),
             ) {
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     StatusLine(server)
                     Spacer(Modifier.height(10.dp))
-                    LabeledRow("地址", server.config.endpoint)
+                    InfoRow("地址", server.config.endpoint)
                     if (server.error != null) {
                         Spacer(Modifier.height(4.dp))
                         Text(server.error, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.error)
@@ -77,11 +77,11 @@ fun ServerDetailPage(
             }
         }
 
-        item { SmallTitle("身份") }
+        item { SmallTitle("身份", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
-                insideMargin = PaddingValues(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
+                insideMargin = PaddingValues(16.dp),
             ) {
                 Text("TLS 证书指纹（SHA-256）", style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
                 Spacer(Modifier.height(6.dp))
@@ -94,11 +94,11 @@ fun ServerDetailPage(
             }
         }
 
-        item { SmallTitle("操作") }
+        item { SmallTitle("操作", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
-                insideMargin = PaddingValues(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
+                insideMargin = PaddingValues(16.dp),
             ) {
                 TextButton(
                     text = "重新连接",

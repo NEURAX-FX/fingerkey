@@ -53,11 +53,11 @@ fun PairingPage(
         token.isNotBlank()
 
     PushedPage(title = "添加服务器", onBack = onBack) {
-        item { SmallTitle("在电脑上获取配对信息") }
+        item { SmallTitle("在电脑上获取配对信息", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
-                insideMargin = PaddingValues(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
+                insideMargin = PaddingValues(16.dp),
             ) {
                 Text("在电脑上运行：", style = MiuixTheme.textStyles.body2)
                 Spacer(Modifier.height(8.dp))
@@ -77,11 +77,11 @@ fun PairingPage(
             }
         }
 
-        item { SmallTitle("连接地址") }
+        item { SmallTitle("连接地址", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
-                insideMargin = PaddingValues(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
+                insideMargin = PaddingValues(16.dp),
             ) {
                 TextField(host, { host = it }, Modifier.fillMaxWidth(), label = "主机名或 IP", singleLine = true)
                 Spacer(Modifier.height(12.dp))
@@ -96,11 +96,11 @@ fun PairingPage(
             }
         }
 
-        item { SmallTitle("安全验证") }
+        item { SmallTitle("安全验证", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
-                insideMargin = PaddingValues(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
+                insideMargin = PaddingValues(16.dp),
             ) {
                 TextField(
                     fingerprint,
@@ -114,11 +114,11 @@ fun PairingPage(
             }
         }
 
-        item { SmallTitle("显示名称") }
+        item { SmallTitle("显示名称", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
-                insideMargin = PaddingValues(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
+                insideMargin = PaddingValues(16.dp),
             ) {
                 TextField(name, { name = it }, Modifier.fillMaxWidth(), label = "备注名称（可选）", singleLine = true)
             }
@@ -127,7 +127,7 @@ fun PairingPage(
         state.error?.let { message ->
             item {
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
                     insideMargin = PaddingValues(16.dp),
                 ) {
                     Text("配对未完成", style = MiuixTheme.textStyles.headline2, color = MiuixTheme.colorScheme.error)

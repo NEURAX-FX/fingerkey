@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -69,7 +70,6 @@ import com.phonefprint.auth.ui.theme.barColor
 import com.phonefprint.auth.ui.theme.glassEffect
 import com.phonefprint.auth.ui.theme.rememberGlassBackdrop
 import com.phonefprint.auth.ui.widgets.CardSpacing
-import com.phonefprint.auth.ui.widgets.LabeledRow
 import com.phonefprint.auth.ui.widgets.MonoValue
 import com.phonefprint.auth.ui.widgets.PageGutter
 import com.phonefprint.auth.ui.widgets.StatCard
@@ -107,8 +107,6 @@ fun HomePage(
                 title = title,
                 modifier = Modifier.glassEffect(backdrop),
                 color = backdrop.barColor(),
-                largeTitle = title,
-                subtitle = connectionSummary(state),
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -121,9 +119,9 @@ fun HomePage(
                 .overScrollVertical()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
             contentPadding = PaddingValues(
-                start = PageGutter,
+                start = 0.dp,
                 top = innerPadding.calculateTopPadding() + PageGutter,
-                end = PageGutter,
+                end = 0.dp,
                 bottom = outerPadding.calculateBottomPadding() + 32.dp,
             ),
             overscrollEffect = null,
@@ -134,7 +132,11 @@ fun HomePage(
 
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(bottom = CardSpacing),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
+                        .padding(horizontal = PageGutter)
+                        .padding(bottom = CardSpacing),
                     horizontalArrangement = Arrangement.spacedBy(CardSpacing),
                 ) {
                     StatCard(
@@ -160,7 +162,7 @@ fun HomePage(
                     EmptyApprovalsCard(state = state, loading = state.loading)
                 }
             } else {
-                item { SmallTitle("待处理请求") }
+                item { SmallTitle("待处理请求", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
                 items(state.approvals.size, key = { index -> state.approvals[index].serverId + ":" + state.approvals[index].id }) { index ->
                     ApprovalRequestCard(
                         approval = state.approvals[index],
@@ -220,6 +222,7 @@ private fun StatusHero(state: ManagerState, onOpenServers: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = PageGutter)
             .padding(bottom = CardSpacing),
         colors = CardDefaults.defaultColors(color = container),
         onClick = onOpenServers,
@@ -264,25 +267,27 @@ private fun DeviceCard(state: ManagerState, soundEnabled: Boolean) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = PageGutter)
             .padding(bottom = CardSpacing),
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        insideMargin = PaddingValues(vertical = 4.dp),
     ) {
-        Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-            LabeledRow(
-                label = "已配对服务器",
-                value = if (state.servers.isEmpty()) "无" else state.servers.joinToString("、") { it.config.name },
-            )
-            LabeledRow(
-                label = "批准提示音",
-                value = if (soundEnabled) "已开启" else "已关闭",
-            )
-            Spacer(Modifier.height(6.dp))
+        BasicComponent(
+            title = "已配对服务器",
+            summary = if (state.servers.isEmpty()) "无" else state.servers.joinToString("、") { it.config.name },
+        )
+        BasicComponent(
+            title = "批准提示音",
+            summary = if (soundEnabled) "已开启" else "已关闭",
+        )
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(
                 "设备公钥",
                 style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
-            Spacer(Modifier.height(4.dp))
             MonoValue(state.publicKey.ifEmpty { "尚未生成" })
         }
     }
@@ -293,7 +298,8 @@ private fun EmptyApprovalsCard(state: ManagerState, loading: Boolean) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = CardSpacing, top = 48.dp),
+            .padding(horizontal = PageGutter)
+            .padding(bottom = CardSpacing),
         insideMargin = PaddingValues(24.dp),
     ) {
         Column(
@@ -329,7 +335,7 @@ private fun EmptyApprovalsCard(state: ManagerState, loading: Boolean) {
 @Composable
 private fun ActionErrorCard(message: String, onDismiss: () -> Unit) {
     TipCard(
-        modifier = Modifier.padding(bottom = CardSpacing),
+        modifier = Modifier.padding(horizontal = PageGutter).padding(bottom = CardSpacing),
     ) {
         Text("操作未完成", style = MiuixTheme.textStyles.headline2, color = MiuixTheme.colorScheme.error)
         Spacer(Modifier.height(6.dp))
@@ -356,8 +362,9 @@ private fun ApprovalRequestCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = PageGutter)
             .padding(bottom = CardSpacing),
-        insideMargin = PaddingValues(20.dp),
+        insideMargin = PaddingValues(16.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {

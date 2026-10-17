@@ -127,7 +127,6 @@ fun SettingsPage(
                 title = title,
                 modifier = Modifier.glassEffect(backdrop),
                 color = backdrop.barColor(),
-                largeTitle = title,
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -140,14 +139,14 @@ fun SettingsPage(
                 .overScrollVertical()
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
             contentPadding = PaddingValues(
-                start = PageGutter,
+                start = 0.dp,
                 top = innerPadding.calculateTopPadding() + PageGutter,
-                end = PageGutter,
+                end = 0.dp,
                 bottom = outerPadding.calculateBottomPadding() + 32.dp,
             ),
             overscrollEffect = null,
         ) {
-            item { SmallTitle("外观") }
+            item { SmallTitle("外观", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
             item {
                 PreferenceCard {
                     ArrowPreference(
@@ -175,7 +174,7 @@ fun SettingsPage(
                     )
                     ArrowPreference(
                         title = "色板规范",
-                        summary = "Material 2025 更鲜亮，2021 更克制",
+                        summary = "2025 更鲜亮，2021 更克制",
                         endActions = { ValueLabel(specLabel(settings.colorSpec)) },
                         onClick = { showSpec = true },
                     )
@@ -198,7 +197,7 @@ fun SettingsPage(
                 }
             }
 
-            item { SmallTitle("通用") }
+            item { SmallTitle("通用", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
             item {
                 PreferenceCard {
                     SwitchPreference(
@@ -217,7 +216,7 @@ fun SettingsPage(
                 }
             }
 
-            item { SmallTitle("后台运行") }
+            item { SmallTitle("后台运行", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
             item {
                 PreferenceCard {
                     ArrowPreference(
@@ -241,7 +240,7 @@ fun SettingsPage(
                 }
             }
 
-            item { SmallTitle("身份") }
+            item { SmallTitle("身份", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
             item {
                 PreferenceCard {
                     ArrowPreference(
@@ -258,7 +257,7 @@ fun SettingsPage(
                 }
             }
 
-            item { SmallTitle("关于") }
+            item { SmallTitle("关于", textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
             item {
                 PreferenceCard {
                     ArrowPreference(
@@ -271,7 +270,7 @@ fun SettingsPage(
 
             state.error?.let { message ->
                 item {
-                    TipCard(modifier = Modifier.padding(top = PageGutter)) {
+                    TipCard(modifier = Modifier.padding(horizontal = PageGutter).padding(top = PageGutter)) {
                         Text(
                             "操作未完成",
                             style = MiuixTheme.textStyles.headline2,
@@ -422,7 +421,7 @@ fun SettingsPage(
 @Composable
 private fun PreferenceCard(content: @Composable () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(bottom = PageGutter),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = PageGutter).padding(bottom = PageGutter),
         insideMargin = PaddingValues(vertical = 4.dp),
     ) {
         content()
