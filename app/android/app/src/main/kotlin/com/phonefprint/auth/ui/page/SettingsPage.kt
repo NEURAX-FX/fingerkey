@@ -75,6 +75,8 @@ import com.phonefprint.auth.ui.theme.rememberGlassBackdrop
 import com.phonefprint.auth.ui.theme.glassEffect
 import com.phonefprint.auth.ui.theme.seedSwatches
 import com.phonefprint.auth.ui.theme.supportsBackdropBlur
+import com.phonefprint.auth.ui.widgets.FingerKeyTopBar
+import com.phonefprint.auth.ui.widgets.fingerKeyScrollBehavior
 import com.phonefprint.auth.ui.widgets.PageGutter
 import com.phonefprint.auth.ui.widgets.TipCard
 
@@ -93,7 +95,7 @@ fun SettingsPage(
 ) {
     val navigator = LocalNavigator.current
     val preferences = UiPreferences.get(context)
-    val scrollBehavior = MiuixScrollBehavior()
+    val scrollBehavior = fingerKeyScrollBehavior()
     val backdrop = rememberGlassBackdrop(settings.blurEnabled)
 
     var showPublicKey by remember { mutableStateOf(false) }
@@ -123,7 +125,7 @@ fun SettingsPage(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
+            FingerKeyTopBar(
                 title = title,
                 modifier = Modifier.glassEffect(backdrop),
                 color = backdrop.barColor(),

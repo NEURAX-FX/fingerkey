@@ -71,6 +71,8 @@ import com.phonefprint.auth.ui.theme.glassEffect
 import com.phonefprint.auth.ui.theme.rememberGlassBackdrop
 import com.phonefprint.auth.ui.widgets.CardSpacing
 import com.phonefprint.auth.ui.widgets.MonoValue
+import com.phonefprint.auth.ui.widgets.FingerKeyTopBar
+import com.phonefprint.auth.ui.widgets.fingerKeyScrollBehavior
 import com.phonefprint.auth.ui.widgets.PageGutter
 import com.phonefprint.auth.ui.widgets.StatCard
 import com.phonefprint.auth.ui.widgets.TipCard
@@ -88,7 +90,7 @@ fun HomePage(
     onApprove: (PendingApproval) -> Unit,
     onOpenServers: () -> Unit,
 ) {
-    val scrollBehavior = MiuixScrollBehavior()
+    val scrollBehavior = fingerKeyScrollBehavior()
     // Per-page pair: this list records the layer, this app bar samples it. Sharing the shell's
     // backdrop would make the bar sample a layer that contains itself and hang the render thread.
     val backdrop = rememberGlassBackdrop(settings.blurEnabled)
@@ -103,7 +105,7 @@ fun HomePage(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
+            FingerKeyTopBar(
                 title = title,
                 modifier = Modifier.glassEffect(backdrop),
                 color = backdrop.barColor(),

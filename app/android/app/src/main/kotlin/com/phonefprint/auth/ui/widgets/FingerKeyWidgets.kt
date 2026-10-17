@@ -19,6 +19,27 @@ import com.phonefprint.auth.ui.theme.ThemeState
 import com.phonefprint.auth.ui.theme.barColor
 import com.phonefprint.auth.ui.theme.glassEffect
 import com.phonefprint.auth.ui.theme.rememberGlassBackdrop
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.util.lerp
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.basic.TopAppBarDefaults
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +53,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -242,3 +265,90 @@ fun PushedPage(
         )
     }
 }
+
+/**
+ * App bar whose single title shrinks and slides from the large-title position (start-aligned,
+ * 26dp, below the collapsed row) into the centred collapsed-title slot while the list scrolls.
+ *
+ * Miuix's TopAppBar only cross-fades its two title layers; this draws one title and interpolates
+ * scale plus translation, driven by the same [ScrollBehavior] that feeds the list.
+ */
+@Composable
+fun FingerKeyTopBar(
+    title: String,
+    scrollBehavior: ScrollBehavior,
+    modifier: Modifier = Modifier,
+    color: Color = MiuixTheme.colorScheme.surface,
+) {
+    val density = LocalDensity.current
+    val styles = MiuixTheme.textStyles
+    val state = scrollBehavior.state
+    val collapsedPx = with(density) { TopAppBarDefaults.CollapsedHeight.toPx() }
+    var textSize by remember { mutableStateOf(IntSize.Zero) }
+    val largeLinePx = with(density) {
+        if (textSize.height > 0) textSize.height.toFloat()
+        else styles.title1.fontSize.toPx() * 1.35f
+    }
+    val expandedPx = collapsedPx + largeLinePx +
+        with(density) { TopAppBarDefaults.LargeTitleBottomPadding.toPx() }
+
+    // Tell the scroll behaviour how far it may collapse; it consumes scroll for this distance.
+    SideEffect {
+        val limit = -(expandedPx - collapsedPx)
+        if (state.heightOffsetLimit != limit) state.heightOffsetLimit = limit
+    }
+
+    var barWidth by remember { mutableIntStateOf(0) }
+    val barHeight = with(density) {
+        (expandedPx + state.heightOffset).coerceIn(collapsedPx, expandedPx).toDp()
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(color)
+            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(barHeight)
+                .clipToBounds()
+                .onSizeChanged { barWidth = it.width },
+        ) {
+            Text(
+                text = title,
+                style = styles.title1,
+                color = MiuixTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier
+                    .onSizeChanged { textSize = it }
+                    .graphicsLayer {
+                        // heightOffset and its limit are both negative; the ratio is 0..1 as the bar collapses.
+                        val limit = state.heightOffsetLimit
+                        val progress = if (limit == 0f) 0f else (state.heightOffset / limit).coerceIn(0f, 1f)
+                        val scale = lerp(1f, styles.title3.fontSize.value / styles.title1.fontSize.value, progress)
+                        val startX = TopAppBarDefaults.TitlePadding.toPx()
+                        val startY = collapsedPx
+                        val endX = (barWidth - textSize.width * scale) / 2f
+                        val endY = (collapsedPx - textSize.height * scale) / 2f
+                        transformOrigin = TransformOrigin(0f, 0f)
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = lerp(startX, endX, progress)
+                        translationY = lerp(startY, endY, progress)
+                    },
+            )
+        }
+    }
+}
+
+/**
+ * Shared top-bar scroll behaviour. Miuix snaps with `spring(stiffness = 2500f)`; a softer
+ * stiffness makes the collapse settle ~10% slower, which reads less abrupt.
+ */
+@Composable
+fun fingerKeyScrollBehavior(): ScrollBehavior = MiuixScrollBehavior(
+    snapAnimationSpec = spring(stiffness = 2050f),
+)

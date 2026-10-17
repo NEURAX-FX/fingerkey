@@ -46,6 +46,8 @@ import com.phonefprint.auth.ui.theme.UiSettings
 import com.phonefprint.auth.ui.theme.barColor
 import com.phonefprint.auth.ui.theme.glassEffect
 import com.phonefprint.auth.ui.theme.rememberGlassBackdrop
+import com.phonefprint.auth.ui.widgets.FingerKeyTopBar
+import com.phonefprint.auth.ui.widgets.fingerKeyScrollBehavior
 import com.phonefprint.auth.ui.widgets.PageGutter
 import com.phonefprint.auth.ui.widgets.StatusLine
 import com.phonefprint.auth.ui.widgets.TipCard
@@ -60,13 +62,13 @@ fun ServersPage(
     settings: UiSettings,
 ) {
     val navigator = LocalNavigator.current
-    val scrollBehavior = MiuixScrollBehavior()
+    val scrollBehavior = fingerKeyScrollBehavior()
     val backdrop = rememberGlassBackdrop(settings.blurEnabled)
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
+            FingerKeyTopBar(
                 title = title,
                 modifier = Modifier.glassEffect(backdrop),
                 color = backdrop.barColor(),
